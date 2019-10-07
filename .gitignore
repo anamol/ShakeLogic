@@ -1,0 +1,11 @@
+# Don't track content of these folders
+
+
+
+# Compiled source #
+###################
+*.pyc
+*.json
+*.xml
+*.csv
+*.joblib
