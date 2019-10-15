@@ -1,20 +1,27 @@
 <html lang=en>
    <body>
     <p></p>
-    <p><center style = "font-family:georgia,garamond,serif;font-size:34px">ShakeLogic: N-gram Search Tool</center></p>
+    <p><center style = "font-family:georgia,garamond,serif;font-size:32px">ShakeLogic: N-gram Search Tool</center></p>
       <form action = "{{url_for('ngramsearchresult')}}" method = "POST" action="/" enctype="multipart/form-data">
          <p><center style = "font-family:georgia,garamond,serif;font-size:20px">Ent'r thy text h're: </center></p>
-         <p><center><textarea name="paragraph" cols="100" rows="20"></textarea></center></p>
-         <p><center style = "font-family:georgia,garamond,serif;font-size:20px">Filt'rs:</center></p>
-         <p><center style = "font-family:georgia,garamond,serif;font-size:15px">Lengthe of ngrammes: <input type = "text" size = 3 name = "ngram1" /> to <input type = "text" size = 3 name = "ngram2" /></center></p>
-         <p><center style = "font-family:georgia,garamond,serif;font-size:15px">Year publish'd: <input type = "text" size = 5 name = "year1" /> to <input type = "text" size = 5 name = "year2" /> &nbsp; 
+         <p><center><textarea name="paragraph" cols="100" rows="19"></textarea></center></p>
+         <p><center style = "font-family:georgia,garamond,serif;font-size:19px">Filt'rs:</center></p>
+         <p><center style = "font-family:georgia,garamond,serif;font-size:14px">Exclude TCP ID: <input type = "text" size = 7 name = "tcpid" /></p> 
+         <p><center style = "font-family:georgia,garamond,serif;font-size:14px">Lengthe of ngrammes: <input type = "text" size = 3 name = "ngram1" /> to <input type = "text" size = 3 name = "ngram2" /></center></p>
+         <p><center style = "font-family:georgia,garamond,serif;font-size:14px">Year publish'd: <input type = "text" size = 5 name = "year1" /> to <input type = "text" size = 5 name = "year2" /> &nbsp; 
               Includeth year unknown? &nbsp;<input type="radio" name="yearunknown" value="yes">  Aye &nbsp; 
              <input type="radio" name="yearunknown" value="no">  Nay </center>
-         <p><center style = "font-family:georgia,garamond,serif;font-size:15px">Numb'r of hits: <input type = "text" size = 3 name = "hit1" /> to <input type = "text" size = 3 name = "hit2" /></center></p>
+         <p><center style = "font-family:georgia,garamond,serif;font-size:14px">Numb'r of hits: <input type = "text" size = 3 name = "hit1" /> to <input type = "text" size = 3 name = "hit2" /></center></p>
          <p><center>Author'd by (filleth as many as did desire): <input type = "text" size = 10 name = "author1" />
          <input type = "text" size = 10 name = "author2" />   <input type = "text" size = 10 name = "author3" />   
          <input type = "text" size = 10 name = "author4" />   <input type = "text" size = 10 name = "author5" /></center></p>
-         <p><center style = "font-family:georgia,garamond,serif;font-size:15px">Collocation distance: <input type = "text" size = 3 name = "collocationdist"></center></p>
+         <p><center>&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;<input type = "text" size = 10 name = "author6" />
+         <input type = "text" size = 10 name = "author7" />   <input type = "text" size = 10 name = "author8" />   
+         <input type = "text" size = 10 name = "author9" />   <input type = "text" size = 10 name = "author10" /></center></p>
+         <p><center>&ensp;<input type = "text" size = 10 name = "author11" />
+         <input type = "text" size = 10 name = "author12" />   <input type = "text" size = 10 name = "author13" />   
+         <input type = "text" size = 10 name = "author14" />   <input type = "text" size = 10 name = "author15" /></center></p>
+         <p><center style = "font-family:georgia,garamond,serif;font-size:14px">Collocation distance: <input type = "text" size = 3 name = "collocationdist"></center></p>
          <p><center><input type = "submit" value = "submit" ></center></p>
       </form>
    </body>

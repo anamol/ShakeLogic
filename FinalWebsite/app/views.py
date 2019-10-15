@@ -3,19 +3,18 @@
 from flask import  Flask, render_template, Response
 from flask import redirect, url_for, request, flash
 import pandas as pd
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, RequestsHttpConnection
+from requests_aws4auth import AWS4Auth
+import boto3
 import numbers
 import string
 import nltk
 import json
-from sklearn.feature_extraction.text import TfidfVectorizer
 import joblib
 import io
 import random
 from matplotlib import pyplot as plt
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import numpy as np
-import time
 
 
 from app import app
@@ -25,7 +24,25 @@ pipeline = joblib.load('pipeline.joblib')
 
 
 def es_ngram_query(es, ngram, collocation):
-	que = { "query": { "multi_match" : { "query" : ngram, "fields" : ["Text", "Title"], "type" : "phrase", "slop" : collocation }}}
+	que = { 
+			"query": 
+			{ 
+				"multi_match" : 
+				{ "query" : ngram, 
+				"fields" : ["Text", "Title"], 
+				"type" : "phrase", 
+				"slop" : collocation 
+				}
+			}, 
+			"highlight":
+			{
+				"fields":
+				{
+					"Text": {},
+					"Title": {}
+				}
+			}
+		}
 
 	res = es.search(index='test_index', body = que)
 	return res
@@ -39,14 +56,19 @@ def ngrammer(paragraph, n):
     for grams in ngram:
         stri = ' '.join(grams)
         strs.append(stri)
-    return strs
+    return list(set(strs))
 
 def check_status(endpoint):
-    es = Elasticsearch([endpoint])
-    if(es.ping()):
-    	return es
-    else:
-    	return False
+	service = 'es'
+	region = 'us-west-2'
+	credentials = boto3.Session().get_credentials()
+	awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, service, session_token=credentials.token)
+	es = Elasticsearch( hosts=[endpoint], http_auth=awsauth, use_ssl=True, verify_certs=True, connection_class=RequestsHttpConnection)
+    #es = Elasticsearch([endpoint])
+	if(es.ping()):
+		return es
+	else:
+		return False
 
 
 @app.route('/attribution', methods=['POST', 'GET'])
@@ -81,7 +103,8 @@ def attributionresult():
 		ax.set_xlabel('Authors', fontsize=20)
 		ax.set_ylabel('Probability', fontsize=20)
 		plt.tight_layout()
-		plt.savefig('/Users/anamolpundle/Documents/Insight/FinalWebsite/app/static/attrplot.png')
+		plt.savefig('./app/static/attrplot.png')
+		#plt.savefig('/Users/anamolpundle/Documents/Insight/FinalWebsite/app/static/attrplot.png')
 
 		return render_template("attributionresult.html",result = result, prob = probability, para=text)
 
@@ -98,6 +121,10 @@ def ngramsearch():
 def ngramsearchresult():
 	if (request.method == 'POST'):
 		paragraph = request.form['paragraph']
+		if (len(paragraph) == 0):
+			flash('Entr\'th m\'re words than none!')
+			return render_template('ngramsearch.html')
+		excude_TCP = request.form['tcpid']
 		ngram_low = int(request.form['ngram1'])
 		ngram_high = int(request.form['ngram2'])
 		year_low = int(request.form['year1'])
@@ -105,13 +132,18 @@ def ngramsearchresult():
 		hits_low = int(request.form['hit1'])
 		hits_high = int(request.form['hit2'])
 		collocation = int(request.form['collocationdist'])
-		author1 = request.form['author1']
+		"""author1 = request.form['author1']
 		author2 = request.form['author2']
 		author3 = request.form['author3']
 		author4 = request.form['author4']
-		author5 = request.form['author5']
+		author5 = request.form['author5']"""
 		unknown_year = request.form['yearunknown']
-
+		author_list = []
+		for i in range(15):
+			auth = 'author' + str(i+1)
+			author = request.form[auth]
+			if (len(author) > 0):
+				author_list.append(author)
 
 		ngram_master_list = []
 		for i in range(ngram_low, ngram_high+1):
@@ -123,7 +155,7 @@ def ngramsearchresult():
 			flash('Not connected to elasticsearch!')
 			return redirect(request.url)
 
-		result_df = pd.DataFrame(columns = ['ngram', 'hits', 'TCP_ID', 'year', 'author', 'title'])
+		result_df = pd.DataFrame(columns = ['ngram', 'hits', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
 
 		for ngram_list in ngram_master_list:
 			for ngram in ngram_list:
@@ -135,34 +167,34 @@ def ngramsearchresult():
 						year = hits['_source']['Year']
 						total_hits = result['hits']['total']
 						TCP_ID = hits['_source']['TCP_ID']
+						highlight = ''
+						try:
+							highlight = highlight.join(hits['highlight']['Text'])
+						except:
+							pass
 						if (isinstance(year, numbers.Number)):
 							if (year >= year_low and year <= year_high):
-								new = pd.DataFrame([[ngram, total_hits, TCP_ID, year, author, title]], \
-									columns = ['ngram', 'hits', 'TCP_ID', 'year', 'author', 'title'])
+								new = pd.DataFrame([[ngram, total_hits, TCP_ID, year, author, title, highlight]], \
+									columns = ['ngram', 'hits', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
 								result_df = result_df.append(new)
 						elif (unknown_year == 'yes' and not isinstance(year, numbers.Number)):
-							new = pd.DataFrame([[ngram, total_hits, TCP_ID, year, author, title]], \
-									columns = ['ngram', 'hits', 'TCP_ID', 'year', 'author', 'title'])
+							new = pd.DataFrame([[ngram, total_hits, TCP_ID, year, author, title, highlight]], \
+									columns = ['ngram', 'hits', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
 							result_df = result_df.append(new)
 
 
 		result_df = result_df.drop_duplicates()
-		if (len(author1) > 1):
-			result_df = result_df[result_df['author'].str.contains(author1)]
+		result_df = result_df[result_df['TCP_ID'] != excude_TCP]
+		final_df = pd.DataFrame(columns = ['ngram', 'hits', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
+		if (len(author_list) > 0):
+			for author in author_list:
+				new = result_df[result_df['author'].str.contains(author)]
+				final_df = final_df.append(new)
+		else:
+			final_df = result_df
+		
 
-		if (len(author2) > 1):
-			result_df = result_df[result_df['author'].str.contains(author2)]
-
-		if (len(author3) > 1):
-			result_df = result_df[result_df['author'].str.contains(author3)]
-
-		if (len(author4) > 1):
-			result_df = result_df[result_df['author'].str.contains(author4)]
-
-		if (len(author5) > 1):
-			result_df = result_df[result_df['author'].str.contains(author5)]
-
-		result_df.to_csv('NgramResult.csv')
+		final_df.to_csv('./app/static/NgramResult.csv')
 
 
 
