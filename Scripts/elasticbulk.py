@@ -10,6 +10,9 @@ def check_status(endpoint):
 	return es
 
 def bulk_push_all_json(index, endpoint, path, step=100):
+	""" Pushes all jsons in path to AWS Elasticsearch. 
+	Does not really work for smaller instances because AWS has a 10 mb limit on 
+	file uploads on medium instances (as of 10/14/19)  """
 
 	es = check_status(endpoint)
 
@@ -51,6 +54,12 @@ def bulk_push_all_json(index, endpoint, path, step=100):
 		pickle.dump(e,open("err","wb")) 
 
 def push_all(index, endpoint, path):
+	""" Pushes all jsons in path (including subfolders) to AWS Elasticsearch. 
+
+	Input: index name, endpoint of AWS ELasticsearch instance, root path
+
+	Output: None """
+
 	es = check_status(endpoint)
 
 	if (es.ping() != True):
