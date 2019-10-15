@@ -9,6 +9,12 @@ import string
 from tei_reader import TeiReader
 
 def download_from_bitbucket():
+	""" Downloads all files from Bitbucket phase1texts 
+
+	Input: None
+
+	Output: None  """
+
 	for i in range(96):
 		if (i < 10):
 			cmd = 'git clone ssh://anamolpundle@bitbucket.org/shcdemo/a0' + str(i) + '.git'
@@ -35,12 +41,26 @@ def download_from_bitbucket():
 		os.system(cmd)
 
 def get_text_tei(input_xml):
+	""" Returns text in string form using TEI reader given an input XML document in TEI format
+
+	Input: Path to XML document in TEI format
+
+	Output: Text in string format """
+
 	reader = TeiReader()
 	corpora = reader.read_file(input_xml)
 	teststr = corpora.text
+	return teststr
 
 
 def get_text(input_xml):
+	""" Returns text in string form using BeautifulSoup, given an input XML document in TEI format. Replaces with 
+	regularized form if present in XML tag
+
+	Input: Path to XML document in TEI format
+
+	Output: Text in string format """
+
     infile = open(input_xml)
     contents = infile.read()
     soup = BeautifulSoup(contents,'lxml')
@@ -64,6 +84,11 @@ def get_text(input_xml):
     return [text, my_dict]
 
 def build_JSON(title, author, year, TCP_ID, text):
+	""" Returns JSON (python dictionary) object given data from XML documents 
+
+	Input: Doc Title, Doc Author, Publication year, TCP_ID, and Doc text
+
+	Output: JSON object  """
 
 	JSON = { 'Title': title,
 	'Author' : author,
@@ -74,8 +99,15 @@ def build_JSON(title, author, year, TCP_ID, text):
 
 	return JSON
 
-def multithread(root_path, df):
+def multithread(root_path, df, workers=8):
+	""" Multithreaded code that takes all XML documents in root path (including subfolders), converts to and saves as JSON. 
+	Creates  dictionary of words that have regularized spelling in XML tags and saves as dictionary.json. 
 
+	Input: root path, NOS dataframe, number of workers for multithreading 
+
+	Output: None  """
+
+	# find all XMLS in root_path
 	xmls = []
 	all_dicts = []
 	for path, subdirs, files in os.walk(root_path):
@@ -83,7 +115,8 @@ def multithread(root_path, df):
 			if (name[-3:] == 'xml'):
 				xmls.append(os.path.join(path, name))
 	print(xmls)
-	with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+
+	with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
 	# Start the load operations and mark each future with its URL
 
 		future_to_url = {executor.submit(get_text, xml): xml for xml in xmls}
@@ -105,6 +138,7 @@ def multithread(root_path, df):
 				text = data
 				JSON = build_JSON(title, author, year, TCP_ID, text)
 
+				# Save as json in json/ folder in root_path
 				with open('json/' + filename_noext + '.json', 'w') as outfile:
 					json.dump(JSON, outfile)
 				print('done!')
@@ -114,11 +148,12 @@ def multithread(root_path, df):
 	for ctr, diction in enumerate(all_dicts):
 		final_dict.update(diction)
 
+	# save dictionary as json
 	with open('dictionary.json', 'w') as output:
 		json.dump(final_dict, output)
 
 def ngrammer(paragraph, n):
-    """Extracts all ngrams of length n words from given text"""
+    """Extracts all ngrams of length n words from given text. Returns list of ngrams. """
     paragraph = paragraph.translate(str.maketrans('', '', string.punctuation))
     ngram = nltk.ngrams(paragraph.split(), n)
     strs = []
