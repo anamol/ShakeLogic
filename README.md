@@ -1,5 +1,4 @@
 # ShakeLogic
-## Tools for Authorship Attribution
-Insight Data Science Project
+Tools for Authorship Attribution
 
-ShakeLogic is a 
+Insight Data Science Project
