@@ -21,10 +21,34 @@ from app import app
 
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 pipeline = joblib.load('pipeline.joblib')
+NOS = pd.read_excel('NOS_database_table_of_contents.xls', sheet_name='phase1_table_of_contents')
 
 
-def es_ngram_query(es, ngram, collocation):
-	que = { 
+def es_ngram_no_of_hits_query(es, ngram, collocation):
+	que = { "from" : 0, "size" : 1,
+			"_source" : {
+			"includes" : [""]
+			},
+			"query": 
+			{ 
+				"multi_match" : 
+				{ "query" : ngram, 
+				"fields" : ["Text", "Title"], 
+				"type" : "phrase", 
+				"slop" : collocation 
+				}
+			}
+		}
+
+	res = es.search(index='test_index', body = que, request_timeout=1000)
+	return res
+
+
+def es_ngram_query(es, ngram, collocation, size=100):
+	que = { "from" : 0, "size" : size,
+			"_source" : {
+			"includes" : ["TCP_ID"]
+			},
 			"query": 
 			{ 
 				"multi_match" : 
@@ -44,7 +68,7 @@ def es_ngram_query(es, ngram, collocation):
 			}
 		}
 
-	res = es.search(index='test_index', body = que)
+	res = es.search(index='test_index', body = que, request_timeout=600)
 	return res
 
 
@@ -64,7 +88,6 @@ def check_status(endpoint):
 	credentials = boto3.Session().get_credentials()
 	awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, service, session_token=credentials.token)
 	es = Elasticsearch( hosts=[endpoint], http_auth=awsauth, use_ssl=True, verify_certs=True, connection_class=RequestsHttpConnection)
-    #es = Elasticsearch([endpoint])
 	if(es.ping()):
 		return es
 	else:
@@ -81,8 +104,6 @@ def attributionresult():
 	if request.method == 'POST':
 		text = request.form['paragraph']
 
-		#if (len(text) < 1000):
-		#	return render_template("notenoughwords.html")
 
 		result = pipeline.predict([text])[0]
 
@@ -104,7 +125,6 @@ def attributionresult():
 		ax.set_ylabel('Probability', fontsize=20)
 		plt.tight_layout()
 		plt.savefig('./app/static/attrplot.png')
-		#plt.savefig('/Users/anamolpundle/Documents/Insight/FinalWebsite/app/static/attrplot.png')
 
 		return render_template("attributionresult.html",result = result, prob = probability, para=text)
 
@@ -119,10 +139,11 @@ def ngramsearch():
 
 @app.route('/ngramsearchresult', methods=['POST', 'GET'])
 def ngramsearchresult():
+
 	if (request.method == 'POST'):
 		paragraph = request.form['paragraph']
 		if (len(paragraph) == 0):
-			flash('Entr\'th m\'re words than none!')
+			
 			return render_template('ngramsearch.html')
 		excude_TCP = request.form['tcpid']
 		ngram_low = int(request.form['ngram1'])
@@ -132,12 +153,8 @@ def ngramsearchresult():
 		hits_low = int(request.form['hit1'])
 		hits_high = int(request.form['hit2'])
 		collocation = int(request.form['collocationdist'])
-		"""author1 = request.form['author1']
-		author2 = request.form['author2']
-		author3 = request.form['author3']
-		author4 = request.form['author4']
-		author5 = request.form['author5']"""
 		unknown_year = request.form['yearunknown']
+		max_results = int(request.form['maxres'])
 		author_list = []
 		for i in range(15):
 			auth = 'author' + str(i+1)
@@ -155,37 +172,42 @@ def ngramsearchresult():
 			flash('Not connected to elasticsearch!')
 			return redirect(request.url)
 
-		result_df = pd.DataFrame(columns = ['ngram', 'hits', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
+		result_df = pd.DataFrame(columns = ['ngram', 'total_hits_in_database', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
 
 		for ngram_list in ngram_master_list:
 			for ngram in ngram_list:
-				result = es_ngram_query(es_inst, ngram, collocation)
-				if (result['hits']['total'] >= hits_low and result['hits']['total'] <= hits_high):
-					for hits in result['hits']['hits']:
-						author = hits['_source']['Author']
-						title = hits['_source']['Title']
-						year = hits['_source']['Year']
-						total_hits = result['hits']['total']
-						TCP_ID = hits['_source']['TCP_ID']
-						highlight = ''
-						try:
-							highlight = highlight.join(hits['highlight']['Text'])
-						except:
-							pass
-						if (isinstance(year, numbers.Number)):
-							if (year >= year_low and year <= year_high):
-								new = pd.DataFrame([[ngram, total_hits, TCP_ID, year, author, title, highlight]], \
-									columns = ['ngram', 'hits', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
-								result_df = result_df.append(new)
-						elif (unknown_year == 'yes' and not isinstance(year, numbers.Number)):
+				init_res = es_ngram_no_of_hits_query(es_inst, ngram, collocation)
+				if (init_res['hits']['total'] < hits_low or init_res['hits']['total'] > hits_high):
+					continue
+
+				result = es_ngram_query(es_inst, ngram, collocation, max_results)
+				total_hits = result['hits']['total']
+				#if (result['hits']['total'] >= hits_low and result['hits']['total'] <= hits_high):
+				for hits in result['hits']['hits']:
+					TCP_ID = hits['_source']['TCP_ID']
+					author = NOS[NOS['TCP_ID'] == TCP_ID].iloc[0]['author']
+					title = NOS[NOS['TCP_ID'] == TCP_ID].iloc[0]['title']
+					year = NOS[NOS['TCP_ID'] == TCP_ID].iloc[0]['publicationYear']
+					
+					highlight = ''
+					try:
+						highlight = highlight.join(hits['highlight']['Text'])
+					except:
+						pass
+					if (isinstance(year, numbers.Number)):
+						if (year >= year_low and year <= year_high):
 							new = pd.DataFrame([[ngram, total_hits, TCP_ID, year, author, title, highlight]], \
-									columns = ['ngram', 'hits', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
+								columns = ['ngram', 'total_hits_in_database', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
 							result_df = result_df.append(new)
+					elif (unknown_year == 'yes' and not isinstance(year, numbers.Number)):
+						new = pd.DataFrame([[ngram, total_hits, TCP_ID, year, author, title, highlight]], \
+								columns = ['ngram', 'total_hits_in_database', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
+						result_df = result_df.append(new)
 
 
 		result_df = result_df.drop_duplicates()
 		result_df = result_df[result_df['TCP_ID'] != excude_TCP]
-		final_df = pd.DataFrame(columns = ['ngram', 'hits', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
+		final_df = pd.DataFrame(columns = ['ngram', 'total_hits_in_database', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
 		if (len(author_list) > 0):
 			for author in author_list:
 				new = result_df[result_df['author'].str.contains(author)]
