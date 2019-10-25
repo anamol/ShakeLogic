@@ -1,6 +1,7 @@
 # views.py
 
 from flask import  Flask, render_template, Response
+from flask_basicauth import BasicAuth
 from flask import redirect, url_for, request, flash
 import pandas as pd
 from elasticsearch import Elasticsearch, RequestsHttpConnection
@@ -12,12 +13,24 @@ import nltk
 import json
 import joblib
 import io
+import os
 import random
 from matplotlib import pyplot as plt
 import numpy as np
 
 
 from app import app
+
+app.config['BASIC_AUTH_USERNAME'] = os.environ['SHAKEUSER']
+app.config['BASIC_AUTH_PASSWORD'] = os.environ['SHAKEPASS']
+app.config['BASIC_AUTH_FORCE'] = True
+
+basic_auth = BasicAuth(app)
+
+@app.route('/secret')
+@basic_auth.required
+def secret_view():
+    return render_template('secret.html')
 
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 pipeline = joblib.load('pipeline.joblib')
@@ -42,7 +55,6 @@ def es_ngram_no_of_hits_query(es, ngram, collocation):
 
 	res = es.search(index='test_index', body = que, request_timeout=1000)
 	return res
-
 
 def es_ngram_query(es, ngram, collocation, size=100):
 	que = { "from" : 0, "size" : size,
@@ -69,6 +81,144 @@ def es_ngram_query(es, ngram, collocation, size=100):
 		}
 
 	res = es.search(index='test_index', body = que, request_timeout=600)
+	return res
+
+def es_query_author(es, low_year, high_year, author_arr, ngram, collocation, size, include_year_unknown, tcpid="None", timeout=600):
+
+	low = -10000
+	high = 10000
+	quer = "should"
+	if (not include_year_unknown):
+		low = 10000
+		high = -10000
+		quer = "must"
+
+	if len(author_arr) < 15:
+	    length = len(author_arr)
+	    for i in range(15-length):
+	        author_arr.append("")
+	        
+	que = {"from" : 0, "size" : size,
+	    "_source" : {
+	    "includes" : ["TCP_ID"]
+	    },
+	    "query" : {
+	        "bool": {
+	            "must": [{
+	                "bool" : {
+	                    "must_not" : 
+	                        { "match" : {"TCP_ID": tcpid} }
+	                }}, { 
+	                "bool": {
+	                    quer : [
+	                        {"range" :{"Year": {"gte": low_year, "lte": high_year}}},
+	                        {"bool" : {"must_not":[{"range" : {"Year":{"gte":low, "lte":high}}}] }}
+	            
+	                    ]
+	                }}, {
+	                "bool": {
+	                    "must" : 
+	                    {
+	                        "bool": {
+	                            "should" :[
+	                                {"match": {"Author" : author_arr[0]}},
+	                                {"match": {"Author" : author_arr[1]}},
+	                                {"match": {"Author" : author_arr[2]}},
+	                                {"match": {"Author" : author_arr[3]}},
+	                                {"match": {"Author" : author_arr[4]}},
+	                                {"match": {"Author" : author_arr[5]}},
+	                                {"match": {"Author" : author_arr[6]}},
+	                                {"match": {"Author" : author_arr[7]}},
+	                                {"match": {"Author" : author_arr[8]}},
+	                                {"match": {"Author" : author_arr[9]}},
+	                                {"match": {"Author" : author_arr[10]}},
+	                                {"match": {"Author" : author_arr[11]}},
+	                                {"match": {"Author" : author_arr[12]}},
+	                                {"match": {"Author" : author_arr[13]}},
+	                                {"match": {"Author" : author_arr[14]}}
+	                            ]
+	                        }
+	                    }
+	                    
+	                }
+	                
+	            }], 
+	            "filter":
+	            {
+	               "multi_match":
+	                        {
+	                            "query": ngram,
+	                            "fields" : ["Text", "Title"], 
+	                            "type" : "phrase", 
+	                            "slop" : collocation 
+	                        }
+	                       }
+	                }
+	            },
+	            "highlight":
+	            {
+	                "fields":
+	                {
+	                    "Text": {},
+	                    "Title": {}
+	                }
+	            }
+	        }
+	res = es.search(index='test_index', body = que, request_timeout=timeout)
+	return res
+
+def es_query_no_author(es, low_year, high_year, ngram, collocation, size, include_year_unknown, tcpid="None", timeout=600):
+        
+	low = -10000
+	high = 10000
+	quer = "should"
+	if (not include_year_unknown):
+		low = 10000
+		high = -10000
+		quer = "must"
+
+	que = {"from" : 0, "size" : size,
+	    "_source" : {
+	    "includes" : ["TCP_ID"]
+	    },
+	    "query" : {
+	        "bool": {
+	            "must": [{
+	                "bool" : {
+	                    "must_not" : 
+	                        { "match" : {"TCP_ID": tcpid} }
+	                }}, {
+	                "bool": {
+	                    quer : [
+	                        {"range" :{"Year": {"gte": low_year, "lte": high_year}}},
+	                        {"bool" : {"must_not":[{"range" : {"Year":{"gte":low, "lte":high}}}] }}
+	            
+	                    ]
+	                }
+	                
+	            }], 
+	            "filter":
+	            {
+	               "multi_match":
+	                        {
+	                            "query": ngram,
+	                            "fields" : ["Text", "Title"], 
+	                            "type" : "phrase", 
+	                            "slop" : collocation 
+	                        }
+	                       }
+	                }
+	            },
+	            "highlight":
+	            {
+	                "fields":
+	                {
+	                    "Text": {},
+	                    "Title": {}
+	                }
+	            }
+	        }
+	res = es.search(index='test_index', body = que, request_timeout=timeout)
 	return res
 
 
@@ -114,8 +264,8 @@ def attributionresult():
 		probability = '%.2f'%(max(pipeline.predict_proba([text])[0])*100)
 		prob_array = pipeline.predict_proba([text])[0]
 
-		author_list = ['Drayton','Robert Greene','Lodge', 'Lyly', 'Christopher Marlowe', 'Anthony Munday', \
-		'Thomas Nash', 'George Peele', 'Shakespeare', 'Thomas Watson']
+		author_list = ['Michael Drayton','Robert Greene','Thomas Kyd', 'Thomas Lodge', 'John Lyly', 'Christopher Marlowe', 'Anthony Munday', 
+               'Thomas Nash', 'George Peele', 'Shakespeare', 'Thomas Watson']
 
 		y_pos = np.arange(len(author_list))
 
@@ -144,11 +294,11 @@ def ngramsearch():
 def ngramsearchresult():
 
 	if (request.method == 'POST'):
+		# get all values from form
 		paragraph = request.form['paragraph']
 		if (len(paragraph) == 0):
-			
 			return render_template('ngramsearch.html')
-		excude_TCP = request.form['tcpid']
+		exclude_TCP = request.form['tcpid']
 		ngram_low = int(request.form['ngram1'])
 		ngram_high = int(request.form['ngram2'])
 		year_low = int(request.form['year1'])
@@ -157,35 +307,56 @@ def ngramsearchresult():
 		hits_high = int(request.form['hit2'])
 		collocation = int(request.form['collocationdist'])
 		unknown_year = request.form['yearunknown']
+		if (unknown_year == 'yes'):
+			unknown_year = True
+		else:
+			unknown_year = False
 		max_results = int(request.form['maxres'])
 		author_list = []
+		author_flag = True
 		for i in range(15):
 			auth = 'author' + str(i+1)
 			author = request.form[auth]
 			if (len(author) > 0):
 				author_list.append(author)
+		if len(author_list) == 0:
+			author_flag = False
 
+		print(exclude_TCP)
+		# Create ngrams
 		ngram_master_list = []
 		for i in range(ngram_low, ngram_high+1):
 			ngram_master_list.append(ngrammer(paragraph, i))
 
-		es_inst = check_status('https://search-phase1prod-gyfvdnaek4kwthkpnkfmaclrva.us-west-2.es.amazonaws.com')
+		#check if connected to Elasticsearch
+		es_inst = check_status(os.environ['ES_ENDPOINT'])
 
 		if (es_inst == False):
 			flash('Not connected to elasticsearch!')
 			return redirect(request.url)
 
-		result_df = pd.DataFrame(columns = ['ngram', 'total_hits_in_database', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
-
+		result_df = pd.DataFrame(columns = ['ngram', 'total_hits', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
+		
+		# loop over all ngrams
 		for ngram_list in ngram_master_list:
 			for ngram in ngram_list:
-				init_res = es_ngram_no_of_hits_query(es_inst, ngram, collocation)
-				if (init_res['hits']['total'] < hits_low or init_res['hits']['total'] > hits_high):
-					continue
+				if (author_flag):
+					init_res = es_query_author(es_inst, year_low, year_high, author_list, ngram, collocation, 0, unknown_year, exclude_TCP)
+					if (init_res['hits']['total'] < hits_low or init_res['hits']['total'] > hits_high):
+						continue
+				else:
+					init_res = es_query_no_author(es_inst, year_low, year_high, ngram, collocation, 0, unknown_year, exclude_TCP)
+					if (init_res['hits']['total'] < hits_low or init_res['hits']['total'] > hits_high):
+						continue
 
-				result = es_ngram_query(es_inst, ngram, collocation, max_results)
+				result = 0
+				if (author_flag):
+					result = es_query_author(es_inst, year_low, year_high, author_list, ngram, collocation, max_results, unknown_year, exclude_TCP)
+				else:
+					result = es_query_no_author(es_inst, year_low, year_high, ngram, collocation, max_results, unknown_year, exclude_TCP)
+
 				total_hits = result['hits']['total']
-				#if (result['hits']['total'] >= hits_low and result['hits']['total'] <= hits_high):
+
 				for hits in result['hits']['hits']:
 					TCP_ID = hits['_source']['TCP_ID']
 					author = NOS[NOS['TCP_ID'] == TCP_ID].iloc[0]['author']
@@ -197,29 +368,14 @@ def ngramsearchresult():
 						highlight = highlight.join(hits['highlight']['Text'])
 					except:
 						pass
-					if (isinstance(year, numbers.Number)):
-						if (year >= year_low and year <= year_high):
-							new = pd.DataFrame([[ngram, total_hits, TCP_ID, year, author, title, highlight]], \
-								columns = ['ngram', 'total_hits_in_database', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
-							result_df = result_df.append(new)
-					elif (unknown_year == 'yes' and not isinstance(year, numbers.Number)):
-						new = pd.DataFrame([[ngram, total_hits, TCP_ID, year, author, title, highlight]], \
-								columns = ['ngram', 'total_hits_in_database', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
-						result_df = result_df.append(new)
 
+					new = pd.DataFrame([[ngram, total_hits, TCP_ID, year, author, title, highlight]], \
+						columns = ['ngram', 'total_hits', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
+					result_df = result_df.append(new)
 
 		result_df = result_df.drop_duplicates()
-		result_df = result_df[result_df['TCP_ID'] != excude_TCP]
-		final_df = pd.DataFrame(columns = ['ngram', 'total_hits_in_database', 'TCP_ID', 'year', 'author', 'title', 'highlight'])
-		if (len(author_list) > 0):
-			for author in author_list:
-				new = result_df[result_df['author'].str.contains(author)]
-				final_df = final_df.append(new)
-		else:
-			final_df = result_df
-		
 
-		final_df.to_csv('./app/static/NgramResult.csv')
+		result_df.to_csv('./app/static/NgramResult.csv')
 
 
 
